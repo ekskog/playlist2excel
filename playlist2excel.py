@@ -13,6 +13,12 @@ import pandas as pd
 from openpyxl.utils.exceptions import IllegalCharacterError
 
 
+# Constants
+MAX_SHEET_NAME_LENGTH = 31
+MAX_SHEET_NAME_LENGTH_WITH_SUFFIX = 28
+MIN_PRINTABLE_ASCII = 32
+
+
 def get_spotify_client() -> spotipy.Spotify:
     """
     Initialize and return a Spotify client using credentials from environment variables.
@@ -113,6 +119,19 @@ def get_playlist_tracks(sp: spotipy.Spotify, playlist_id: str) -> List[Dict[str,
     return tracks
 
 
+def clean_string_for_excel(text: str) -> str:
+    """
+    Remove non-printable characters from string for Excel compatibility.
+    
+    Args:
+        text: String to clean
+        
+    Returns:
+        Cleaned string with only printable ASCII characters (>= 32)
+    """
+    return ''.join(char for char in text if ord(char) >= MIN_PRINTABLE_ASCII)
+
+
 def sanitize_sheet_name(name: str) -> str:
     """
     Sanitize playlist name to be a valid Excel sheet name.
@@ -129,9 +148,9 @@ def sanitize_sheet_name(name: str) -> str:
     for char in invalid_chars:
         name = name.replace(char, '')
     
-    # Truncate to 31 characters
-    if len(name) > 31:
-        name = name[:31]
+    # Truncate to maximum length
+    if len(name) > MAX_SHEET_NAME_LENGTH:
+        name = name[:MAX_SHEET_NAME_LENGTH]
     
     # If name is empty after sanitization, use a default
     if not name.strip():
@@ -168,7 +187,7 @@ def export_to_excel(playlists_data: Dict[str, pd.DataFrame], output_file: str = 
             for sheet_name, df in playlists_data.items():
                 # Clean string columns
                 for col in df.select_dtypes(include=['object']).columns:
-                    df[col] = df[col].apply(lambda x: ''.join(char for char in str(x) if ord(char) >= 32) if pd.notna(x) else x)
+                    df[col] = df[col].apply(lambda x: clean_string_for_excel(str(x)) if pd.notna(x) else x)
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
         
         print(f"\n✓ Successfully exported {len(playlists_data)} playlists to '{output_file}' (with cleaned data)")
@@ -217,7 +236,7 @@ def main():
             original_sheet_name = sheet_name
             counter = 1
             while sheet_name in playlists_data:
-                sheet_name = f"{original_sheet_name[:28]}_{counter}"
+                sheet_name = f"{original_sheet_name[:MAX_SHEET_NAME_LENGTH_WITH_SUFFIX]}_{counter}"
                 counter += 1
             
             playlists_data[sheet_name] = df
